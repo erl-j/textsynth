@@ -1,19 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Examples</title>
+    <img src="./misc/logo.svg" alt="textsynth logo" width="200" height="200">
+    <h2>
+        Generate synthesizer sounds from text prompts with a simple evolutionary algorithm.
+    </h2>
+        <a href="https://github.com/erl-j/textsynth/">Github link</a>
+
+    <p>
+  
+       
+    </p>
+    <p>
+        Start with randomly initialized synthesizer sounds. Each iteration, the current synthesizer sounds are evaluated
+        on how well they match the text prompt. The best sounds are then combined and mutated to generate new sounds for
+        the next iteration. 200 generations w/ 50 samples takes about ~20s on a 3090 (not tested on CPU).
+    </p>
 </head>
+
 <body>
 
-<!-- Placeholder for audio examples -->
-<div id="audioContainer"></div>
+    <!-- Placeholder for audio examples -->
+    <div id="audioContainer"></div>
 
-<script>
+    <script>
 
-    const prompts = [
+        const prompts = [
             "kick drum",
             "human scream",
             "808 bass",
@@ -22,44 +38,45 @@
             "whistling",
             "rain",
             "bird",
-            ]
+        ]
 
-    // Reference to the container div
-    const audioContainer = document.getElementById('audioContainer');
+        // Reference to the container div
+        const audioContainer = document.getElementById('audioContainer');
 
-    stages = ["evolution", "final"]
-    stage_captions = ["Evolution, best per generation (200 generations)", "Final population"]
+        stages = ["evolution", "final"]
+        stage_captions = ["Evolution, best per generation (200 generations)", "Final population"]
 
-    // Loop through each audio file and create the necessary HTML elements
-    prompts.forEach(file => {
-        
-        const promptElement = document.createElement('h2');
-        promptElement.textContent = "Prompt:"+file
-        audioContainer.appendChild(promptElement);
-        stages.forEach((stage, stage_idx)=>{
-        // Create title element
+        // Loop through each audio file and create the necessary HTML elements
+        prompts.forEach(file => {
 
-        const stageTitleElement = document.createElement('h3');
-        stageTitleElement.textContent = stage_captions[stage_idx];
-        audioContainer.appendChild(stageTitleElement);
-        
-        
-        // Create audio element
-        const audioElement = document.createElement('audio');
-        audioElement.controls = true;
+            const promptElement = document.createElement('h2');
+            promptElement.textContent = "Prompt:" + file
+            audioContainer.appendChild(promptElement);
+            stages.forEach((stage, stage_idx) => {
+                // Create title element
 
-        // Create source element
-        const sourceElement = document.createElement('source');
-        sourceElement.src = "./demos/" + file + "_"+stage+".wav";
-        sourceElement.type = "audio/wav";
+                const stageTitleElement = document.createElement('h3');
+                stageTitleElement.textContent = stage_captions[stage_idx];
+                audioContainer.appendChild(stageTitleElement);
 
-        // Append elements
-        audioElement.appendChild(sourceElement);
-        audioContainer.appendChild(audioElement);
-        })
-    });
-</script>
+
+                // Create audio element
+                const audioElement = document.createElement('audio');
+                audioElement.controls = true;
+
+                // Create source element
+                const sourceElement = document.createElement('source');
+                sourceElement.src = "./demos/" + file + "_" + stage + ".wav";
+                sourceElement.type = "audio/wav";
+
+                // Append elements
+                audioElement.appendChild(sourceElement);
+                audioContainer.appendChild(audioElement);
+            })
+        });
+    </script>
 
 </body>
 </body>
+
 </html>
