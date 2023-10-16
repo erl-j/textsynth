@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Examples</title>
+</head>
+<body>
+
+<!-- Placeholder for audio examples -->
+<div id="audioContainer"></div>
+
+<script>
+
+    const prompts = [
+            "kick drum",
+            "human scream",
+            "808 bass",
+            "piano",
+            "hihat",
+            "whistling",
+            "rain",
+            "bird",
+            ]
+
+    // Reference to the container div
+    const audioContainer = document.getElementById('audioContainer');
+
+    stages = ["evolution", "final"]
+    stage_captions = ["Evolution, best per generation (200 generations)", "Final population"]
+
+    // Loop through each audio file and create the necessary HTML elements
+    prompts.forEach(file => {
+        
+        const promptElement = document.createElement('h2');
+        promptElement.textContent = "Prompt:"+file
+        audioContainer.appendChild(promptElement);
+        stages.forEach((stage, stage_idx)=>{
+        // Create title element
+
+        const stageTitleElement = document.createElement('h3');
+        stageTitleElement.textContent = stage_captions[stage_idx];
+        audioContainer.appendChild(stageTitleElement);
+        
+        
+        // Create audio element
+        const audioElement = document.createElement('audio');
+        audioElement.controls = true;
+
+        // Create source element
+        const sourceElement = document.createElement('source');
+        sourceElement.src = "./demos/" + file + "_"+stage+".wav";
+        sourceElement.type = "audio/wav";
+
+        // Append elements
+        audioElement.appendChild(sourceElement);
+        audioContainer.appendChild(audioElement);
+        })
+    });
+</script>
+
+</body>
+</body>
+</html>
