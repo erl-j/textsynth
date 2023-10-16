@@ -3,10 +3,10 @@
 
 Generate synthesizer sounds from text prompts with a simple evolutionary algorithm.
 
-Audio examples here:
+**Audio examples here: https://erl-j.github.io/textsynth/**
 
 
-Synth used : https://github.com/torchsynth/torchsynth
+Synth: https://github.com/torchsynth/torchsynth
 
 Audio-Text cross modal embedding: https://github.com/LAION-AI/CLAP
 
@@ -23,8 +23,3 @@ Start with randomly initialized synthesizer sounds. Each iteration, the current 
 - Open ended exploration.
 - RL
 - Neural nets?
-- vst support.
-- Chatbot or smth
-- NFT
-- VR
-- VST?
