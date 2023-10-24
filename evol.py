@@ -8,13 +8,14 @@ from torchsynth.synth import Voice,SynthConfig
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
-from sklearn.cluster import KMeans
 from tqdm import tqdm
 import IPython.display as display
 import pandas as pd
 import laion_clap
 import soundfile as sf
 import einops
+from fast_pytorch_kmeans import KMeans
+from texts import prompts
 
 SAMPLE_RATE=48000
 
@@ -159,9 +160,9 @@ class Z2PatchModel(torch.nn.Module):
     
 CLIP_DURATION=1
 BATCH_SIZE=60
-TEMPERATURE=0.1
 MIDI_F0=53
 CLAP_Z_SIZE = 512
+SELECTION_TEMP = 2.0
 
 config = SynthConfig(batch_size=BATCH_SIZE,sample_rate=SAMPLE_RATE,reproducible=False,buffer_size_seconds=CLIP_DURATION)
 synth = SynthWrapper(Voice(config).to(device))
@@ -169,28 +170,89 @@ dummy_p=synth.get_parameter_tensor()
 clap = CLAPWrapper()
 N_QUANTIZATION_BINS=100
 
-pq = (torch.rand(dummy_p.shape).to(device) * N_QUANTIZATION_BINS).long()
-PROMPT = "A bass synth"
-zt = clap.embed_text([PROMPT,PROMPT])[:1]
-
-zt_batch = zt.repeat(BATCH_SIZE,1)
-best_audio = []
+zt = clap.embed_text(prompts[:BATCH_SIZE]).detach()
 
 
 #%%
-model = Z2PatchModel(n_patch_params=dummy_p.shape[-1], n_bins=100, hidden_size=32, n_layers=2, n_heads=2, z_size=CLAP_Z_SIZE).to(device)
-optimizer = torch.optim.Adam(model.parameters(),lr=0.001)
+
+class Z2PatchDS(torch.utils.data.Dataset):
+
+    def __init__(self,max_size=1000):
+        super().__init__()
+        self.z = None
+        self.pq = None
+        self.max_size = max_size
+
+    def __len__(self):
+        return len(self.z)
+    
+    def add(self,z,pq,z_fitness):
+        if self.z is None:
+            self.z = z
+            self.pq = pq
+            self.z_fitness = z_fitness
+        else:
+            self.z = torch.concatenate([self.z,z],dim=0)
+            self.pq = torch.concatenate([self.pq,pq],dim=0)
+            self.z_fitness = torch.concatenate([self.z_fitness,z_fitness],dim=0)
+        if len(self.z) > self.max_size:
+            self.prune()
+
+    def get_most_fit(self,k):
+        idx = torch.argsort(self.z_fitness,descending=True)[:k]
+        return self.pq[idx]
+
+    def prune(self):
+
+        prune_size = self.max_size
+        # sort all by fitness
+        idxs = torch.argsort(self.z_fitness,descending=True)
+        # sort pq
+        self.pq = self.pq[idxs]
+        # sort z
+        self.z = self.z[idxs]
+        # sort fitness
+        self.z_fitness = self.z_fitness[idxs]
+
+        
+        kmeans = KMeans(n_clusters=prune_size, mode='cosine', verbose=1)
+        labels = kmeans.fit_predict(self.z)
+        # get first idx of each cluster
+        cluster_to_first_index = {}
+        for i,l in enumerate(labels):
+            if l not in cluster_to_first_index:
+                cluster_to_first_index[l] = i
+        idxs = []
+        for i in cluster_to_first_index.values():
+            idxs.append(i)
+        
+        idxs = torch.tensor(idxs).long()
+        idxs = idxs[:prune_size]
+        self.z = self.z[idxs]
+        self.pq = self.pq[idxs]
+        self.z_fitness = self.z_fitness[idxs]
+
+    def __getitem__(self,idx):
+        return {"z":self.z[idx],"pq":self.pq[idx]}
+
+losses = []
+
+model = Z2PatchModel(n_patch_params=dummy_p.shape[-1], n_bins=100, hidden_size=64, n_layers=2, n_heads=2, z_size=CLAP_Z_SIZE).to(device)
+optimizer = torch.optim.SGD(model.parameters(),lr=0.01)
 archive = []
 records = []
+pq = (torch.rand(dummy_p.shape).to(device) * N_QUANTIZATION_BINS).long()
 
+ds = Z2PatchDS()
 for gen in tqdm(range(10000)):
     with torch.no_grad():
-        pq = model.generate(zt_batch, temperature=1.0).detach()
         # heatmap of pq
         p = (pq.float())/N_QUANTIZATION_BINS
+        # clamp to 0.001 to 0.999
+        p = torch.clamp(p,0.001,0.999)
         # print(min and max of each parameter)
         # synthesize 
-        audio = synth.synthesize(p+0.01,MIDI_F0).detach()
+        audio = synth.synthesize(p,MIDI_F0).detach()
         
         # # peak normalize each sample
         peaks = torch.max(torch.abs(audio),dim=1,keepdim=True)[0]
@@ -199,6 +261,11 @@ for gen in tqdm(range(10000)):
         za = clap.embed_audio(audio).detach()
         # get fitness by measuring similarity to target
         similarity = torch.nn.functional.cosine_similarity(za,zt).detach()
+        # fitness = torch.softmax(similarity/SELECTION_TEMP,0).detach()
+        # add to archive
+
+        ds.add(za,pq,similarity)
+        dl = torch.utils.data.DataLoader(ds,batch_size=BATCH_SIZE,shuffle=True)
 
         for b in range(BATCH_SIZE):
             records.append({
@@ -206,11 +273,32 @@ for gen in tqdm(range(10000)):
                 "similarity":similarity[b].item(),
                 "pq":pq[b],
             })
-        
+    
+    for d in dl:
+        logits = model(d["z"],d["pq"])
+        loss = model.loss(d["pq"],logits)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+         # print(f"loss: {loss.item()}")
+        losses.append(loss.item())
 
-    if gen % 10 == 0:
+
+    if gen>9 and gen % 10 == 0:
         # clear figure
         clear_output(wait=True)
+
+        best_pq = ds.get_most_fit(BATCH_SIZE).detach()
+        p = (best_pq.float())/N_QUANTIZATION_BINS
+        p = torch.clamp(p,0.001,0.999)
+        print(p.shape)
+        # play best audio
+        best_audio = synth.synthesize(p,MIDI_F0).detach()[:5]
+        play(best_audio.flatten().cpu().numpy())
+
+        print(f"archive size: {len(ds)}")
+        # print mean similarity
+        print(f"mean similarity: {similarity.mean().item()}")
         
 
         sns.heatmap(pq.cpu().numpy())
@@ -227,21 +315,16 @@ for gen in tqdm(range(10000)):
         # scatter plot
         sns.scatterplot(data=df,x="generation",y="similarity")
         plt.show()
-
-
-
         
         # play(audio.flatten().cpu().numpy())
+        # plot losses
+        plt.plot(losses)
+        plt.show()
 
 
-    # print mean similarity
-    print(f"mean similarity: {similarity.mean().item()}")
 
-    for i in range(1):
-        logits = model(za,pq)
-        loss = model.loss(pq,logits)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        # print(f"loss: {loss.item()}")
+    pq = model.generate(zt, temperature=4.0).detach()
+
+
+
 # %%
