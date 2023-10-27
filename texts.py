@@ -1,4 +1,5 @@
-prompts = ["Frigid Ice Shimmer",
+prompts = [
+"Frigid Ice Shimmer",
 "Robotic Reso Ping",
 "Saturated Solar Flare",
 "Gentle Gale Glide",
