@@ -1,0 +1,4 @@
+Write a thousand texts referring to sounds. For example:
+- Dog bark.
+- Rain on roof.
+- Funky slap bass.

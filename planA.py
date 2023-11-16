@@ -3,7 +3,6 @@ import torch
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-import torch
 from torchsynth.synth import Voice,SynthConfig
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,7 +20,7 @@ SAMPLE_RATE=48000
 
 # Run on the GPU if it's available
 if torch.cuda.is_available():
-    device = torch.device("cuda:3")
+    device = torch.device("cuda:2")
 else:
     device = torch.device("cpu")
 
@@ -84,8 +83,8 @@ class Z2PatchModel(torch.nn.Module):
         super().__init__()
         self.n_bins = n_bins
         self.hidden_size = hidden_size
-        self.decoder = torch.nn.TransformerDecoder(
-            torch.nn.TransformerDecoderLayer(
+        self.main_block = torch.nn.TransformerEncoder(
+            torch.nn.TransformerEncoderLayer(
                 d_model=self.hidden_size,
                 nhead=n_heads,
                 dim_feedforward=hidden_size*4,
@@ -100,6 +99,7 @@ class Z2PatchModel(torch.nn.Module):
         self.positional_encoding = torch.nn.Parameter(
             torch.randn(self.seq_len, self.hidden_size)
         )
+        self.feature_embedding = torch.nn.Linear(z_size, self.hidden_size)
         self.embedding = torch.nn.Embedding(n_bins, self.hidden_size)
         self.start_token_embedding = torch.nn.Parameter(torch.randn(1, self.hidden_size))
         self.output_layer = torch.nn.Linear(self.hidden_size, self.n_bins)
@@ -115,26 +115,28 @@ class Z2PatchModel(torch.nn.Module):
 
         pqz = self.embedding(pq)
         # add start token
-        se = self.start_token_embedding.repeat(pqz.shape[0],1,1)
-        pqz = torch.cat([pqz,se],dim=1)
+        # se = self.start_token_embedding.repeat(pqz.shape[0],1,1)
+        se = self.feature_embedding(z[:,None,:])
+        pqz = torch.cat([se,pqz],dim=1)
 
         pqz += self.positional_encoding[ :, :]
 
-        zp = self.z_proj(z[:,None,:])
 
-        zout = self.decoder(
-            tgt=pqz,
-            memory=zp,
-            tgt_is_causal=True,
-            tgt_mask=self.tgt_mask.to(z.device),
+        zout = self.main_block(
+            pqz,
+            mask=self.tgt_mask.to(z.device),
+            is_causal=True
         )
         logits = self.output_layer(zout)
         return logits[:, :-1, :]
     
-    def generate(self, z: torch.Tensor, temperature: float = 1.0) -> torch.Tensor:
+    def generate(self, z: torch.Tensor, temp_sample_fn) -> torch.Tensor:
         # temporary eval
         batch_size = z.shape[0]
         pq = torch.zeros(batch_size, self.n_patch_params).long().to(device)
+        # get exponential distribution
+        
+        temperature = temp_sample_fn(batch_size)
         with torch.no_grad():
             for i in range(self.n_patch_params):
                 logits = self.forward(z, pq=pq)
@@ -172,14 +174,21 @@ class Z2PatchModel(torch.nn.Module):
         loss = einops.rearrange(loss,'(b s) -> b s',b=batch_size).sum(-1)
         return loss
         
-        
-    
 CLIP_DURATION=1
 BATCH_SIZE=60
 MIDI_F0=53
 CLAP_Z_SIZE = 512
-SELECTION_TEMP = 1.0
-D_TEMPERATURE = 0.5
+SELECTION_TEMP_RATE = 5.0
+D_TEMPERATURE = 0.1
+
+temp_sample_fn= lambda batch_size : torch.distributions.exponential.Exponential(rate=SELECTION_TEMP_RATE).sample((batch_size,1)).to(device)+1
+
+# sample 100 and plot
+sns.histplot(temp_sample_fn(10000).cpu().numpy().flatten())
+plt.show()
+
+#%%
+
 
 config = SynthConfig(batch_size=BATCH_SIZE,sample_rate=SAMPLE_RATE,reproducible=False,buffer_size_seconds=CLIP_DURATION)
 synth = SynthWrapper(Voice(config).to(device))
@@ -187,10 +196,13 @@ dummy_p=synth.get_parameter_tensor()
 clap = CLAPWrapper()
 N_QUANTIZATION_BINS=100
 
+prompt = ["a snare drum"]*BATCH_SIZE
+
 zt = clap.embed_text(prompts[:BATCH_SIZE]).detach()
 
 # take first dim of zt and tile
 zt = zt[:1].repeat(BATCH_SIZE,1)
+
 
 #%%
 
@@ -204,6 +216,9 @@ pq = (torch.rand(dummy_p.shape).to(device) * N_QUANTIZATION_BINS).long()
 
 for gen in tqdm(range(10000)):
     with torch.no_grad():
+        # if keyboard exit
+        
+
         p = (pq.float())/N_QUANTIZATION_BINS
         # clamp to 0.001 to 0.999 to avoid silence
         p = torch.clamp(p,0.001,0.999)
@@ -214,7 +229,8 @@ for gen in tqdm(range(10000)):
         # embed audio
         za = clap.embed_audio(audio).detach()
         # get all cosine similarities between all za and zt
-        similarity = torch.nn.functional.cosine_similarity(za,zt)
+        #similarity = torch.nn.functional.cosine_similarity(za,zt)
+        similarity = (za @ zt.T)[...,0]
         # fitness = torch.softmax(similarity/SELECTION_TEMP,0).detach()
         # add to archive
         for b in range(BATCH_SIZE):
@@ -223,7 +239,7 @@ for gen in tqdm(range(10000)):
                 "similarity":similarity[b].item(),
                 "pq":pq[b],
             })
-    logits = model(za,pq)
+    logits = model(zt,pq)
     loss_weights = torch.softmax(similarity/D_TEMPERATURE,0).detach()
     loss = (model.loss_per_sample(pq,logits) * loss_weights).mean()
     loss.backward()
@@ -236,7 +252,6 @@ for gen in tqdm(range(10000)):
         # clear figure
         clear_output(wait=True)
 
-        # heatmap of similarity
         plt.plot(similarity.cpu().numpy().flatten())
         plt.title("similarity")
         plt.show()
@@ -246,8 +261,9 @@ for gen in tqdm(range(10000)):
         plt.show()
 
 
+
         # p = (best_pq.float())/N_QUANTIZATION_BINS
-        p = torch.clamp(p,0.001,0.999)
+        p = torch.clamp(p,0.01,0.99)
         # play best audio
         best_audio = synth.synthesize(p,MIDI_F0).detach()
         play(best_audio.flatten().cpu().numpy())
@@ -276,9 +292,7 @@ for gen in tqdm(range(10000)):
         plt.plot(losses)
         plt.show()
 
-
-
-    pq = model.generate(zt, temperature=SELECTION_TEMP).detach()
+    pq = model.generate(zt, temp_sample_fn=temp_sample_fn).detach()
 
 
 
