@@ -1,4 +1,3 @@
-#%%
 import torch
 import numpy as np
 import seaborn as sns
@@ -8,24 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
 from tqdm import tqdm
-import IPython.display as display
-import pandas as pd
 import laion_clap
-import soundfile as sf
-import einops
-from fast_pytorch_kmeans import KMeans
-from prompts import prompts
 
-SAMPLE_RATE=48000
-
-# Run on the GPU if it's available
-if torch.cuda.is_available():
-    device = torch.device("cuda:1")
-else:
-    device = torch.device("cpu")
-
-def play(a):
-    display.display(display.Audio(a, rate=SAMPLE_RATE))
 
 class SynthWrapper():
     def __init__(self,synth):
@@ -65,7 +48,7 @@ class SynthWrapper():
         return self.parameterdict2tensor(self.synth.get_parameters())
     
 class CLAPWrapper():
-    def __init__(self):
+    def __init__(self,device):
         self.clap_model = laion_clap.CLAP_Module(enable_fusion=True, device=device)
         self.clap_model.load_ckpt() # download the default pretrained checkpoint.
 
@@ -77,36 +60,3 @@ class CLAPWrapper():
         text_embed = self.clap_model.get_text_embedding(text_data, use_tensor=True)
         return text_embed
     
-
-CLIP_DURATION=1
-BATCH_SIZE=60
-MIDI_F0=53
-CLAP_Z_SIZE = 512
-
-
-#%%
-config = SynthConfig(batch_size=BATCH_SIZE,sample_rate=SAMPLE_RATE,reproducible=False,buffer_size_seconds=CLIP_DURATION)
-synth = SynthWrapper(Voice(config).to(device))
-dummy_p=synth.get_parameter_tensor()
-clap = CLAPWrapper()
-
-N_SOUNDS = 100_000
-
-records = []
-
-for gen in tqdm(range(10000)):
-    with torch.no_grad():
-        # random sample p
-        p = torch.rand(dummy_p.shape).to(device)
-        # synthesize 
-        audio = synth.synthesize(p,MIDI_F0).detach()
-        # embed
-        za = clap.embed_audio(audio).detach()
-        # save 
-        records.append({'p':p.cpu().numpy(),'za':za.cpu().numpy()})
-        
-
-torch.save(records,'artefacts/records.pt')
-
-
-# %%

@@ -14,7 +14,7 @@ import laion_clap
 import soundfile as sf
 import einops
 from fast_pytorch_kmeans import KMeans
-from texts import prompts
+from prompts import prompts
 
 SAMPLE_RATE=48000
 
