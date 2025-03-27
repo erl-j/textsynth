@@ -23,3 +23,13 @@ Start with randomly initialized synthesizer sounds. Each iteration, the current 
 - Open ended exploration.
 - RL
 - Neural nets?
+
+## Cite
+
+If you found this project useful please cite:
+@software{textsynth,
+  author       = {Nicolas Jonason},
+  title        = {TextSynth},
+  month        = october,
+  year         = 2023,
+}
