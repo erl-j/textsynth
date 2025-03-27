@@ -26,10 +26,12 @@ Start with randomly initialized synthesizer sounds. Each iteration, the current 
 
 ## Cite
 
+```BibTex
 If you found this project useful please cite:
-@software{textsynth,
+@software{TextSynth: Generate synthesizer sounds from text prompts with a simple evolutionary algorithm,
   author       = {Nicolas Jonason},
   title        = {TextSynth},
   month        = october,
   year         = 2023,
 }
+```
