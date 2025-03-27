@@ -26,8 +26,9 @@ Start with randomly initialized synthesizer sounds. Each iteration, the current 
 
 ## Cite
 
-```BibTex
 If you found this project useful please cite:
+
+```BibTex
 @software{
   textsynth,
   author       = {Nicolas Jonason},
