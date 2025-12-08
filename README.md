@@ -1,7 +1,6 @@
 ![logo](misc/logo.svg)
 
-
-Generate synthesizer sounds from text prompts with a simple genetic algorithm.
+# TextSynth: Generate synthesizer sounds from text prompts with a simple genetic algorithm.
 
 **Audio examples here: https://erl-j.github.io/textsynth/**
 
