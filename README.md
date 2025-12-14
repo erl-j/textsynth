@@ -9,6 +9,8 @@ Synth: https://github.com/torchsynth/torchsynth
 
 Audio-Text cross modal embedding: https://github.com/LAION-AI/CLAP
 
+Inspiration for this project: https://magenta.withgoogle.com/es-for-creativity
+
 ##  How it works
 Start with randomly initialized synthesizer sounds. Each iteration, the current synthesizer sounds are evaluated on how well they match the text prompt. The best sounds are then combined and mutated to generate new sounds for the next iteration. 200 generations w/ 50 samples takes about ~20s on a 3090 (not tested on CPU).
 
